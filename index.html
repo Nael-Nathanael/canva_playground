@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Playing with Canvas</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #theCanvas {
+            height: calc(100vh - 20px);
+        }
+    </style>
+</head>
+<body>
+<canvas id="theCanvas" width="1080" height="1920" style="border:1px solid #000000;">
+
+</canvas>
+<script src="data.js"></script>
+<script>
+    let currentFrame = 0;
+    const theCanvas = document.getElementById("theCanvas");
+    const context = theCanvas.getContext("2d");
+
+    const scenes = [...video_data.timeline.scenes]
+
+    const scene = scenes[0]
+    const duration = scene.duration
+    const backgroundFill = scene.background.color
+    const fps = 60
+    const canvas_redraw_frequency = 1000 / fps
+
+    const components = []
+    const existing_elems = {}
+
+    for (const component of scene.components) {
+        component.start = component.start ? component.start : 0
+        component.end = component.end ? component.end : scene.duration;
+
+        const animation = {}
+        if (component.animation) {
+            animation['start'] = component.start
+            animation['end'] = component.start + .25
+            animation['opacity'] = {
+                start: 0,
+                end: 1,
+            }
+        }
+
+        if (component.animation === 'rise_animation') {
+            animation['y'] = {
+                start: component.y + 50,
+                end: component.y,
+            }
+            component.y = component.y + 50
+        } else if (component.animation === 'pan_animation') {
+            animation['x'] = {
+                start: component.x - 50,
+                end: component.x,
+            }
+            component.x = component.x - 50
+        } else if (component.animation === 'fade_animation') {
+        }
+
+        if (!component.animation) {
+            component.opacity = 1
+        }
+
+        // first, just handle 'visual_asset' type
+        if (component.type === 'visual_asset') {
+            const focused_asset = video_data.assets.filter(e => e.id === component.asset_id)[0]
+            const src = focused_asset.files[focused_asset.files.length - 1].url
+
+            component.start = component.start ? component.start : 0
+            component.end = component.end ? component.end : scene.duration;
+
+            const datum = {
+                x: component.x,
+                y: component.y,
+                opacity: component.opacity,
+                angle: component.angle,
+                height: component.height,
+                width: component.width,
+                src: src,
+                type: component.type,
+                animation: animation,
+                id: component.asset_id,
+            };
+            components.push(datum)
+        }
+    }
+
+    // Draw bg's fill
+    context.fillStyle = backgroundFill
+
+    function redraw() {
+        if (currentFrame >= 300) return
+        context.clearRect(0, 0, theCanvas.width, theCanvas.height);
+        currentFrame += 1;
+        for (const component of components) {
+            draw_component(component)
+        }
+    }
+
+    function render_img(component) {
+        if (component.animation !== {}) {
+            const startFrame = component.animation.start * fps;
+            const endFrame = component.animation.end * fps;
+            if (currentFrame >= startFrame && currentFrame <= endFrame) {
+                const percentage = (currentFrame - (component.animation.start * fps)) / ((component.animation.end * fps) - (component.animation.start * fps));
+                if (component.animation.opacity) {
+                    const delta = component.animation.opacity.end - component.animation.opacity.start;
+                    component.opacity = component.animation.opacity.start + (percentage * delta)
+                }
+                if (component.animation.x) {
+                    const delta = component.animation.x.end - component.animation.x.start;
+                    component.x = component.animation.x.start + (percentage * delta)
+                }
+                if (component.animation.y) {
+                    const delta = component.animation.y.end - component.animation.y.start;
+                    component.y = component.animation.y.start + (percentage * delta)
+                }
+            } else if (currentFrame <= component.animation.start * fps) {
+                // do nothing
+            } else if (currentFrame >= component.animation.start * fps) {
+                if (component.animation.opacity) {
+                    component.opacity = component.animation.opacity.end
+                }
+                if (component.animation.x) {
+                    component.x = component.animation.x.end
+                }
+                if (component.animation.y) {
+                    component.y = component.animation.y.end
+                }
+            }
+        }
+
+        if (existing_elems[component.id]) {
+            const img = existing_elems[component.id]
+            img.width = component.width
+            img.height = component.height
+            img.style.rotate = component.angle
+
+            const tempCanvas = document.createElement("canvas");
+            tempCanvas.width = img.width;
+            tempCanvas.height = img.height;
+            const tempCtx = tempCanvas.getContext("2d");
+
+            tempCtx.globalAlpha = Math.floor(component.opacity * 1000) / 1000;
+            tempCtx.drawImage(img, 0, 0, component.width, component.height);
+
+            context.drawImage(tempCanvas, component.x, component.y, component.width, component.height)
+        } else {
+            const img = document.createElement("img")
+
+            img.onload = function () {
+                const tempCanvas = document.createElement("canvas");
+                tempCanvas.width = img.width;
+                tempCanvas.height = img.height;
+                const tempCtx = tempCanvas.getContext("2d");
+
+                tempCtx.globalAlpha = Math.floor(component.opacity * 1000) / 1000;
+                tempCtx.drawImage(img, 0, 0, component.width, component.height);
+
+                context.drawImage(tempCanvas, component.x, component.y, component.width, component.height)
+            }
+            img.src = component.src
+            img.width = component.width
+            img.height = component.height
+            img.style.rotate = component.angle;
+            existing_elems[component.id] = img;
+        }
+    }
+
+    function draw_component(component) {
+        if (component.type === 'visual_asset') {
+            render_img(component)
+        }
+    }
+
+    document.onreadystatechange = function () {
+        if (document.readyState === "interactive") {
+            setInterval(redraw, canvas_redraw_frequency);
+        }
+    }
+</script>
+</body>
+</html>
